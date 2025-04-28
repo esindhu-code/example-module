@@ -1,0 +1,44 @@
+# module "cloud-function-health-check" {
+#   source  = "app.terraform.io/fig-tlz/live-cloud-function-gen2/google"
+#   version = "1.0.4"
+#   project_id           = local.project_id
+#   region               = var.region
+#   name                 = "cloud-function-health-check"
+#   description          = "cloud function for checking health of sql instnces"
+#   bucket_name          = "dr-health-check-code-bucket2"
+#   bucket_force_destroy = true
+
+#   bundle_config = {
+#     source_dir  = "./pfb"
+#     output_path = "pfb-cf.zip"
+#   }
+#   function_config = {
+#     entry_point        = "consecutive_failure_monitor"
+#     instance_count     = 1
+#     memory_mb          = 300
+#     cpu                = "0.167"
+#     runtime            = "python311"
+#     timeout_seconds    = 300
+#     max_instance_count = 2
+#     min_instance_count = 1
+#   }
+#   service_account_create = false
+#   service_account        = "600829541275-compute@developer.gserviceaccount.com"
+#   ingress_settings       = "ALLOW_INTERNAL_ONLY"
+#   # label_application-name = "test-rlb-app"
+#   # label_description      = "test-rlb-cf"
+# }
+
+
+# module "health-check-cf-bucket" {
+#    source        = "app.terraform.io/fig-tlz/live-cloud-storage/google"
+#   version        = "1.0.5"
+#   name           = "dr-health-check-code-bucket2"
+#   force_destroy  = true
+#   project_id     = local.project_id
+#   location       = "us-central1"
+#   storage_class  = "REGIONAL"
+#   label_application-name = "test"
+#   label_description      = "test-bucket"
+#   label_functionality    = "test"
+# }
