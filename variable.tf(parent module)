@@ -1,0 +1,243 @@
+variable "name" {
+  description = "Name of the Load Balancer"
+}
+
+variable "location" {
+  description = "Region where the load balancer will be created"
+  default     = "us-central1"
+}
+
+variable "project_id" {
+  description = "Name of the project where the load balancer will be created"
+}
+
+variable "network_selflink" {
+  description = "Self link of the network"
+}
+
+variable "subnetwork_selflink" {
+  description = "Self link of the subnetwork"
+}
+
+variable "create_address" {
+  description = "Set true to create compute address"
+  type        = bool
+  default     = false
+}
+
+variable "ip_address" {
+  description = "IP Address to create forwarding rule"
+}
+
+variable "create_url_map" {
+  description = "Set true to create URL map"
+  type        = bool
+  default     = false
+}
+
+variable "url_map" {
+  description = "A reference to the RegionUrlMap resource that defines the mapping from URL to the RegionBackendService"
+  default     = ""
+}
+
+variable "private_key" {
+  description = "The write-only private key in PEM format"
+}
+
+variable "certificate" {
+  description = " The certificate in PEM format. The certificate chain must be no greater than 5 certs long."
+}
+
+variable "ssl" {
+  description = "Set true to create HTTPS proxy"
+  type        = bool
+  default     = true
+}
+
+variable "ssl_certificates" {
+  description = "RegionSslCertificate resources that are used to authenticate connections between users and the load balancer"
+  type        = list(string)
+  default     = []
+}
+
+variable "min_tls" {
+  description = "Minimum version of SSL protocol"
+  default     = "TLS_1_0"
+}
+
+variable "policy_profile" {
+  description = "Profile specifies the set of SSL features that can be used by the load balancer when negotiating SSL with clients."
+  default     = "COMPATIBLE"
+}
+
+variable "labels" {
+  description = "Labels to apply to this forwarding rule. A list of key->value pairs."
+  type        = map(any)
+  default     = {}
+}
+
+variable "path_matcher" {
+  description = "The name of the PathMatcher to use to match the path portion of the URL if the hostRule matches the URL's host portion."
+  default     = "allpaths"
+}
+
+variable "path_rule" {
+  type = list(map(object({
+    paths   = list(string)
+    service = string
+  })))
+  default = []
+}
+
+variable "host" {
+  description = "The list of host patterns to match."
+  type        = list(string)
+}
+
+variable "lb_scheme" {
+  description = "Indicates what kind of load balancing this regional backend service will be used for."
+  default     = "INTERNAL"
+}
+
+variable "balancing_mode" {
+  description = "Specifies the balancing mode for this backend. Possible values are: UTILIZATION, RATE, CONNECTION."
+  default     = "CONNECTION"
+}
+
+variable "port_range" {
+  description = "Only packets addressed to ports in the specified range will be forwarded to target. If empty, all packets will be forwarded."
+  type        = string
+  default     = "443"
+}
+
+variable "protocol" {
+  description = "The protocol for the backend and frontend forwarding rule."
+  type        = string
+  default     = "TCP"
+}
+
+variable "backends" {
+  description = "Map backend indices to list of backend maps."
+  type = map(object({
+    project         = optional(string)
+    protocol        = optional(string)
+    port_name       = optional(string)
+    description     = optional(string)
+    enable_cdn      = optional(bool)
+    security_policy = optional(string, null)
+
+    connection_draining_timeout_sec = optional(number)
+    session_affinity                = optional(string)
+    affinity_cookie_ttl_sec         = optional(number)
+    locality_lb_policy              = optional(string)
+    path                            = list(string)
+
+    log_config = object({
+      enable      = optional(bool)
+      sample_rate = optional(number)
+    })
+
+    groups = object({
+      group                        = string
+      balancing_mode               = optional(string)
+      capacity_scaler              = optional(number)
+      description                  = optional(string)
+      max_connections              = optional(number)
+      max_connections_per_instance = optional(number)
+      max_connections_per_endpoint = optional(number)
+      max_rate                     = optional(number)
+      max_rate_per_instance        = optional(number)
+      max_rate_per_endpoint        = optional(number)
+      max_utilization              = optional(number)
+    })
+    iap_config = object({
+      enable               = bool
+      oauth2_client_id     = optional(string)
+      oauth2_client_secret = optional(string)
+    })
+    cdn_policy = optional(object({
+      cache_mode                   = optional(string)
+      signed_url_cache_max_age_sec = optional(string)
+      default_ttl                  = optional(number)
+      max_ttl                      = optional(number)
+      client_ttl                   = optional(number)
+      negative_caching             = optional(bool)
+      negative_caching_policy = optional(object({
+        code = optional(number)
+        ttl  = optional(number)
+      }))
+      serve_while_stale = optional(number)
+      cache_key_policy = optional(object({
+        include_host           = optional(bool)
+        include_protocol       = optional(bool)
+        include_query_string   = optional(bool)
+        query_string_blacklist = optional(list(string))
+        query_string_whitelist = optional(list(string))
+        include_named_cookies  = optional(list(string))
+      }))
+    }))
+    outlier_detection = optional(object({
+      base_ejection_time = optional(object({
+        seconds = number
+        nanos   = optional(number)
+      }))
+      consecutive_errors                    = optional(number)
+      consecutive_gateway_failure           = optional(number)
+      enforcing_consecutive_errors          = optional(number)
+      enforcing_consecutive_gateway_failure = optional(number)
+      enforcing_success_rate                = optional(number)
+      interval = optional(object({
+        seconds = number
+        nanos   = optional(number)
+      }))
+      max_ejection_percent        = optional(number)
+      success_rate_minimum_hosts  = optional(number)
+      success_rate_request_volume = optional(number)
+      success_rate_stdev_factor   = optional(number)
+    }))
+  }))
+}
+
+variable "security_policy" {
+  description = "The resource URL for the security policy to associate with the backend service"
+  type        = string
+  default     = null
+}
+
+#DNS Record Variables
+
+variable "create_dns_record" {
+  description = "Set true create DNS A record"
+  type        = bool
+  default     = false
+}
+
+variable "dns_suffix" {
+  description = "DNS suffix used to create DNS A record"
+  default     = "gcp.farmersinsurance.cloud."
+  type        = string
+}
+
+variable "alias_name" {
+  description = "Alias name to which the load balancer needs to connect"
+  type        = string
+  default     = ""
+}
+
+variable "dns_zone" {
+  description = "The DNS Zone in which DNS A record is to be created"
+  type        = string
+  default     = "private-zone-gcp-fi-cloud"
+}
+
+variable "dns_project" {
+  description = "The project in which the Private DNS Managed zone is created"
+  type        = string
+  default     = "gcp-live-core-prod-shd-svcs"
+}
+
+variable "fwdrule_global_access" {
+  description = "Set true to enable global access"
+  type        = bool
+  default     = false
+}
