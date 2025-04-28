@@ -1,0 +1,154 @@
+locals {
+  ip_address = var.create_address ? join("", google_compute_address.default.*.address) : var.ip_address
+  url_map_selflink = join(",", flatten([google_compute_region_url_map.default[*].self_link]))
+  url_map          = var.create_url_map ? local.url_map_selflink : var.url_map
+}
+
+resource "google_compute_region_ssl_certificate" "default" {
+  project = var.project_id
+  region  = var.location
+
+  name_prefix = "${var.name}-certificate"
+  private_key = var.private_key
+  certificate = var.certificate
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "google_compute_region_ssl_policy" "default" {
+  name            = "${var.name}-ssl-policy"
+  project         = var.project_id
+  region          = var.location
+  description     = "ssl policy for ${var.name} load balancer"
+  min_tls_version = var.min_tls
+  profile         = var.policy_profile
+}
+
+resource "google_compute_region_target_https_proxy" "default" {
+  count = var.ssl ? 1 : 0
+
+  project = var.project_id
+  name    = "${var.name}-https-proxy"
+  url_map = local.url_map
+  region  = var.location
+
+  ssl_certificates = [google_compute_region_ssl_certificate.default.id]
+  ssl_policy       = google_compute_region_ssl_policy.default.self_link
+}
+
+resource "google_compute_address" "default" {
+  count   = var.create_address ? 1 : 0
+  name    = "${var.name}-address"
+  address = var.ip_address
+  region  = var.location
+}
+
+resource "google_compute_forwarding_rule" "https" {
+  count                 = var.ssl ? 1 : 0
+  project               = var.project_id
+  network               = var.network_selflink
+  subnetwork            = var.subnetwork_selflink
+  region                = var.location
+  name                  = "${var.name}-forwarding-rule"
+  target                = google_compute_region_target_https_proxy.default[0].self_link
+  ip_address            = local.ip_address
+  ip_protocol           = var.protocol
+  port_range            = var.port_range
+  load_balancing_scheme = var.lb_scheme
+  labels                = var.labels
+  allow_global_access   = var.fwdrule_global_access
+}
+
+resource "google_compute_region_url_map" "default" {
+  name     = "${var.name}-url-map"
+  region   = var.location
+
+  default_service = google_compute_region_backend_service.default["default"].self_link
+
+  host_rule {
+    hosts        = var.host
+    path_matcher = var.path_matcher # default = "allpaths"
+  }
+
+  path_matcher {
+    name            = var.path_matcher
+    default_service = google_compute_region_backend_service.default["default"].self_link
+    dynamic "path_rule" {
+      for_each = var.backends
+      content {
+        paths   = lookup(path_rule.value, "path", null)
+        service = google_compute_region_backend_service.default[path_rule.key].id
+      }
+    }
+  }
+}
+
+resource "google_compute_region_backend_service" "default" {
+  provider = google-beta
+  for_each = var.backends
+
+  project = coalesce(each.value["project"], var.project_id)
+  name    = "${var.name}-backend-${each.key}"
+  region  = var.location
+
+  load_balancing_scheme = var.lb_scheme
+
+  port_name = lookup(each.value, "port_name", "http")
+  protocol  = lookup(each.value, "protocol", "HTTP")
+
+  description                     = lookup(each.value, "description", null)
+  connection_draining_timeout_sec = lookup(each.value, "connection_draining_timeout_sec", null)
+  enable_cdn                      = lookup(each.value, "enable_cdn", false)
+  session_affinity                = lookup(each.value, "session_affinity", null)
+  affinity_cookie_ttl_sec         = lookup(each.value, "affinity_cookie_ttl_sec", null)
+  locality_lb_policy              = lookup(each.value, "locality_lb_policy", null)
+
+  # To achieve a null backend security_policy, set each.value.security_policy to "" (empty string), otherwise, it fallsback to var.security_policy.
+  security_policy = lookup(each.value, "security_policy") == "" ? null : (lookup(each.value, "security_policy") == null ? var.security_policy : each.value.security_policy)
+  backend {
+    group                        = lookup(lookup(each.value, "groups", {}), "group", null)
+    balancing_mode               = lookup(lookup(each.value, "groups", {}), "balancing_mode", null)
+    capacity_scaler              = lookup(lookup(each.value, "groups", {}), "capacity_scaler", null)
+    description                  = lookup(lookup(each.value, "groups", {}), "description", null)
+    max_connections              = lookup(lookup(each.value, "groups", {}), "max_connections", null)
+    max_connections_per_instance = lookup(lookup(each.value, "groups", {}), "max_connections_per_instance ", null)
+    max_connections_per_endpoint = lookup(lookup(each.value, "groups", {}), "max_connections_per_endpoint", null)
+    max_rate                     = lookup(lookup(each.value, "groups", {}), "max_rate", null)
+    max_rate_per_instance        = lookup(lookup(each.value, "groups", {}), "max_rate_per_instance", null)
+    max_rate_per_endpoint        = lookup(lookup(each.value, "groups", {}), "max_rate_per_endpoint", null)
+    max_utilization              = lookup(lookup(each.value, "groups", {}), "max_utilization", null)
+  }
+
+  dynamic "log_config" {
+    for_each = lookup(lookup(each.value, "log_config", {}), "enable", true) ? [1] : []
+    content {
+      enable      = lookup(lookup(each.value, "log_config", {}), "enable", true)
+      sample_rate = lookup(lookup(each.value, "log_config", {}), "sample_rate", "1.0")
+    }
+  }
+
+  dynamic "iap" {
+    for_each = lookup(lookup(each.value, "iap_config", {}), "enable", false) ? [1] : []
+    content {
+      oauth2_client_id     = lookup(lookup(each.value, "iap_config", {}), "oauth2_client_id", "")
+      oauth2_client_secret = lookup(lookup(each.value, "iap_config", {}), "oauth2_client_secret", "")
+    }
+  }
+}
+
+#DNS A record creation
+
+resource "google_dns_record_set" "tlz-a-record" {
+  count        = var.create_dns_record ? 1 : 0
+  name         = "${var.alias_name}.${var.dns_suffix}"
+  managed_zone = var.dns_zone
+  project      = var.dns_project
+  type         = "A"
+  ttl          = 300
+
+  rrdatas = [
+    local.ip_address
+  ]
+}
